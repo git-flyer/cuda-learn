@@ -1,4 +1,4 @@
-# cude_code
+# cuda_code
 
 我的 CUDA 学习笔记仓库，记录 CUDA 基础语法、GPU 架构知识以及各类优化示例代码。
 
@@ -7,7 +7,7 @@
 ## 目录结构
 
 ```
-cude_code/
+cuda_code/
 └── matmul/                  # 矩阵乘法系列示例
     ├── naive_matmul.cu              # 朴素矩阵乘法
     ├── shared_memory_matmul.cu     # 共享内存分块优化
