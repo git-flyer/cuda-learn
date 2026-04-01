@@ -58,8 +58,8 @@ __global__ void double_buffer_float4_matmul_kernel(const float *A, const float *
         int r = load_idx / (BK / 4);             // 线程加载矩阵元素的行下标
         int c = (load_idx % (BK / 4)) * 4;       // 线程加载矩阵元素的列下标
         int a_row = b_y * BM + r;
-        int a_col = c; // k_offset = 0
-        // 向量化加载 A
+        int a_col = c; // k_offset = 0      第一次加载数据到As中时，k_offset = 0
+        // 向量化加载 A，把一个float的地址解释为float4的地址
         prefetch_a[i] = (a_row < M && a_col < K) ?
             reinterpret_cast<const float4*>(&A[a_row * K + a_col])[0] : make_float4(0.f, 0.f, 0.f, 0.f);
     }
@@ -94,7 +94,7 @@ __global__ void double_buffer_float4_matmul_kernel(const float *A, const float *
         Bs[0][r][c+2] = prefetch_b[i].z; Bs[0][r][c+3] = prefetch_b[i].w;
     }
 
-    __syncthreads();
+    __syncthreads();    // 确保 Buffer 0 的数据加载完成，所有线程都能看到
 
     // ------------------------------------------------------------------------
     // Main Loop: 双缓冲流水线
@@ -104,7 +104,7 @@ __global__ void double_buffer_float4_matmul_kernel(const float *A, const float *
     for (int k_offset = 0; k_offset < K; k_offset += BK) {
         int next_k = k_offset + BK; // 下一个 Tile 的偏移量
 
-        // 1. 预取下一个 Tile 到寄存器 (掩盖接下来的计算延迟)
+        // 1. 预取下一个 Tile 到寄存器组prefetch_a 和 prefetch_b (掩盖接下来的计算延迟)
         if (next_k < K) {
             #pragma unroll
             for (int i = 0; i < A_LOADS_PER_THREAD; ++i) {
@@ -146,6 +146,7 @@ __global__ void double_buffer_float4_matmul_kernel(const float *A, const float *
         }
 
         // 3. 将预取好的下一轮数据写入另一个 buffer (smem_idx ^ 1)
+        // 这里是一个异或操作，相同为0、不同为1，能够在0和1之间切换
         if (next_k < K) {
             int next_smem_idx = smem_idx ^ 1;
             #pragma unroll
