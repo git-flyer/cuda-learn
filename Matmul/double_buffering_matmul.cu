@@ -34,7 +34,8 @@ __global__ void double_buffer_float4_matmul_kernel(const float *A, const float *
     constexpr int B_LOADS_PER_THREAD = (BK * BN) / (4 * NUM_THREADS);
 
     // 1. 双缓冲共享内存分配 (第一维为 2)
-    __shared__ float As[2][BM][BK];
+    // 这里As转置存储
+    __shared__ float As[2][BK][BM];
     __shared__ float Bs[2][BK][BN];
 
     // 计算累加值的寄存器
@@ -77,13 +78,16 @@ __global__ void double_buffer_float4_matmul_kernel(const float *A, const float *
     }
 
     // 将预取的数据写入 Buffer 0
+    // 因为As矩阵的数据是按行优先存储的，但是读取As时每个线程是按列读取的，所以在写入共享内存时需要转置一下（行列互换）
+    // 这样在计算阶段每个线程就可以连续地读取自己需要的元素，避免了共享内存 bank conflict，提高访问效率
+    //
     #pragma unroll
     for (int i = 0; i < A_LOADS_PER_THREAD; ++i) {
         int load_idx = i * NUM_THREADS + tid;
         int r = load_idx / (BK / 4);
         int c = (load_idx % (BK / 4)) * 4;
-        As[0][r][c+0] = prefetch_a[i].x; As[0][r][c+1] = prefetch_a[i].y;
-        As[0][r][c+2] = prefetch_a[i].z; As[0][r][c+3] = prefetch_a[i].w;
+        As[0][c + 0][r] = prefetch_a[i].x; As[0][c + 1][r] = prefetch_a[i].y;
+        As[0][c + 2][r] = prefetch_a[i].z; As[0][c + 3][r] = prefetch_a[i].w;
     }
     #pragma unroll
     for (int i = 0; i < B_LOADS_PER_THREAD; ++i) {
@@ -132,7 +136,7 @@ __global__ void double_buffer_float4_matmul_kernel(const float *A, const float *
         #pragma unroll
         for (int i = 0; i < BK; ++i) {
             #pragma unroll
-            for (int j = 0; j < TM; ++j) frag_a[j] = As[smem_idx][t_y * TM + j][i];
+            for (int j = 0; j < TM; ++j) frag_a[j] = As[smem_idx][i][t_y * TM + j];
             #pragma unroll
             for (int j = 0; j < TN; ++j) frag_b[j] = Bs[smem_idx][i][t_x * TN + j];
 
@@ -154,8 +158,8 @@ __global__ void double_buffer_float4_matmul_kernel(const float *A, const float *
                 int load_idx = i * NUM_THREADS + tid;
                 int r = load_idx / (BK / 4);
                 int c = (load_idx % (BK / 4)) * 4;
-                As[next_smem_idx][r][c+0] = prefetch_a[i].x; As[next_smem_idx][r][c+1] = prefetch_a[i].y;
-                As[next_smem_idx][r][c+2] = prefetch_a[i].z; As[next_smem_idx][r][c+3] = prefetch_a[i].w;
+                As[next_smem_idx][c + 0][r] = prefetch_a[i].x; As[next_smem_idx][c + 1][r] = prefetch_a[i].y;
+                As[next_smem_idx][c + 2][r] = prefetch_a[i].z; As[next_smem_idx][c + 3][r] = prefetch_a[i].w;
             }
             #pragma unroll
             for (int i = 0; i < B_LOADS_PER_THREAD; ++i) {
