@@ -20,6 +20,7 @@ __global__ void naiveTransRow(float *d_output, float *d_input, int M, int N){
     }
 }
 
+//一个线程处理多个元素的情况
 // 进阶版本的矩阵转置，col版本，原始矩阵按列读取，转置后的矩阵按行写入
 // Bm是tile数据的行大小，Bn是列, 一般Bm要是blockDim.x的整数倍
 // Bn要是blockDim.y的整数倍
