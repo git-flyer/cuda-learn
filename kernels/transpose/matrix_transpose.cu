@@ -20,10 +20,14 @@ __global__ void naiveTransRow(float *d_output, float *d_input, int M, int N){
     }
 }
 
-//一个线程处理多个元素的情况
+// 一个线程处理多个元素的情况
 // 进阶版本的矩阵转置，col版本，原始矩阵按列读取，转置后的矩阵按行写入
 // Bm是tile数据的行大小，Bn是列, 一般Bm要是blockDim.x的整数倍
 // Bn要是blockDim.y的整数倍
+// 实际上是实现了一个线程粗化的效果，一个线程处理多个元素，减少了线程调度的开销
+// 线程级并行(Instruction-Level Parallelism)，因为一个线程现在实现多个元素的load
+// + store，因此 GPU 能够同时发起多个 memory request，在等待时做别的计算
+// 对于memory_bound 的算子，提升ILP能够有更多提升
 template <int Bm, int Bn>
 __global__ void naiveTransColNelements(float *d_output, float *d_input, int M, int N){
     // (r,c)代表tile数据左上角元素的坐标
@@ -67,7 +71,9 @@ __global__ void SmemTrans_B_SZ(const float* idata, float* odata, int M, int N) {
     }
 }
 
-//
+
+// 一个线程处理一个矩阵元素的版本
+// BLOCK_SZ_M = blockDim.y, BLOCK_SZ_N = blockDim.x
 template <int BLOCK_SZ_M, int BLOCK_SZ_N>
 __global__ void SmemTrans(float *d_output, const float *d_input, int M, int N) {
     // 1. 定义共享内存 (无 Padding)
@@ -77,10 +83,12 @@ __global__ void SmemTrans(float *d_output, const float *d_input, int M, int N) {
     // 使用 blockDim 保证常规的线程索引逻辑
     int x = blockIdx.x * blockDim.x + threadIdx.x; // 列坐标
     int y = blockIdx.y * blockDim.y + threadIdx.y; // 行坐标
+    int tx = threadIdx.x; // 线程在 Block 内的列索引
+    int ty = threadIdx.y; // 线程在 Block 内的行索引
 
     // 3. 将数据从全局内存读入 Shared Memory (合并读取, Coalesced Read)
     if (x < N && y < M) {
-        tile[threadIdx.y][threadIdx.x] = d_input[y * N + x];
+        tile[ty][tx] = d_input[y * N + x];
     }
 
     // 确保整个 Tile 的数据都已写入 Shared Memory
@@ -92,14 +100,13 @@ __global__ void SmemTrans(float *d_output, const float *d_input, int M, int N) {
 
     // 5. 在非方阵下，重新分配线程在 Tile 里的新坐标
     // 这一步是为了让线程去按列读 tile，并按行写回 d_output，从而实现合并写入
-    int new_ty = tid % BLOCK_SZ_M; // 对应转置后的行（原 tile 的列）
-    int new_tx = tid / BLOCK_SZ_M; // 对应转置后的列（原 tile 的行）
+    int new_tx = tid % blockDim.y; // 对应转置后的行（原 tile 的列）
+    int new_ty = tid / blockDim.y; // 对应转置后的列（原 tile 的行）
 
     // 6. 计算输出矩阵 (N行 x M列) 的全局坐标
-    // 坚持使用模板参数 BLOCK_SZ_M 和 BLOCK_SZ_N 来计算跨度
-    // 这保证了输出矩阵 Block 级别的几何映射绝对正确，且能触发编译器的常量折叠优化
-    int out_x = blockIdx.y * BLOCK_SZ_M + new_ty;
-    int out_y = blockIdx.x * BLOCK_SZ_N + new_tx;
+    // 让线程优先处理转置后的行（原 tile 的列），这样可以保证写回全局内存时的合并访问
+    int out_x = blockIdx.y * blockDim.y + new_tx; // 转置后的列坐标
+    int out_y = blockIdx.x * blockDim.x + new_ty; // 转置后的行坐标
 
     // 7. 将转置后的数据写回全局内存 (合并写入, Coalesced Write)
     // 转置后，全局宽度变成了 M，高度变成了 N
@@ -116,9 +123,10 @@ void call_naiveTrans(float *d_output, float *d_input, int M, int N){
 }
 
 void call_SmemTrans(float *d_output, float *d_input, int M, int N){
-    dim3 blockDim(16, 16);
+    dim3 blockDim(4, 2);
     dim3 gridDim((N + blockDim.x - 1) / blockDim.x, (M + blockDim.y - 1) / blockDim.y);
-    SmemTrans_B_SZ<16><<<gridDim, blockDim>>>(d_output, d_input, M, N);
+    // SmemTrans_B_SZ<16><<<gridDim, blockDim>>>(d_output, d_input, M, N);
+    SmemTrans<4, 2><<<gridDim, blockDim>>>(d_output, d_input, M, N);
 }
 
 int main(){
