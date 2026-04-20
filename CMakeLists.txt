@@ -26,6 +26,6 @@ add_executable(thread_tile_matmul kernels/matmul/thread_tile_matmul.cu)
 add_executable(double_buffering_matmul kernels/matmul/double_buffering_matmul.cu)
 add_executable(matrix_transpose kernels/transpose/matrix_transpose.cu)
 add_executable(histogram_shared kernels/histogram/histogram_shared.cu)
-
+add_executable(RMSNorm kernels/RMSNorm/RMSNorm.cu)
 # Print found sources
 message(STATUS "Found ${CUDA_SOURCES}")
