@@ -39,6 +39,25 @@ def matrix_multiply_blocked(A, B, BLOCK_SIZE):
             C[m : m + BLOCK_SIZE, n : n + BLOCK_SIZE] = acc
     return C
 
+@triton.jit
+def _fused_linear_kernel_fwd(
+    a_ptr, # A 矩阵首元素指针
+    b_ptr, # B 矩阵首元素指针
+    c_ptr, # A * B 的结果 C 矩阵的首元素指针
+    M, N, K, # Matrix dimensions
+    BLOCK_SIZE_M : tl.constexpr = 128, 
+    BLOCK_SIZE_N : tl.constexpr = 128,
+    BLOCK_SIZE_K : tl.constexpr = 64,
+):
+
+    # 一个 triton block的二维坐标
+    pid_m = tl.program_id(0)  # program 的第 0 维用来处理行
+    pid_n = tl.program_id(1)  # program 的第 1 维用来处理列
+    # 一个triton block的处理范围（在M,N轴上)
+    offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)[:, None]
+    
+
+
 if __name__ == '__main__':
     # 矩阵 A 是一个 32 * 64 的矩阵
     # 矩阵 B 是一个 64 * 128 的矩阵
