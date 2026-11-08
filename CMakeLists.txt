@@ -1,8 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
+# Default to Ampere; allow -DCMAKE_CUDA_ARCHITECTURES=... to select another GPU.
+set(CMAKE_CUDA_ARCHITECTURES 86 CACHE STRING "CUDA architectures to build for")
 project(cuda_kernels LANGUAGES CXX CUDA)
-
-# Set CUDA architecturesto 86 for Ampere (compute capability 8.6)
-set(CMAKE_CUDA_ARCHITECTURES 86)
 
 # Common CUDA flags
 set(CMAKE_CUDA_STANDARD 14)
@@ -27,5 +26,11 @@ add_executable(double_buffering_matmul kernels/matmul/double_buffering_matmul.cu
 add_executable(matrix_transpose kernels/transpose/matrix_transpose.cu)
 add_executable(histogram_shared kernels/histogram/histogram_shared.cu)
 add_executable(RMSNorm kernels/RMSNorm/RMSNorm.cu)
+add_executable(reduce kernels/reduce/reduce.cu)
+
+include(CTest)
+if(BUILD_TESTING)
+    add_test(NAME reduce_correctness COMMAND reduce --test)
+endif()
 # Print found sources
 message(STATUS "Found ${CUDA_SOURCES}")

@@ -16,8 +16,12 @@ cuda-learn/
 │   │   └── double_buffering_matmul.cu   # 双缓冲优化
 │   ├── transpose/            # 矩阵转置
 │   │   └── matrix_transpose.cu
-│   └── histogram/           # 直方图统计
-│       └── histogram_shared.cu
+│   ├── histogram/           # 直方图统计
+│   │   └── histogram_shared.cu
+│   └── reduce/              # 一维 FP32 求和归约
+│       ├── reduce.cuh       # 寄存器累加 + warp shuffle + 多轮归约
+│       ├── reduce.cu        # 正确性检查与基准测试
+│       └── README.md        # 实现讲解与运行说明
 ├── CMakeLists.txt
 └── build.sh
 ```
@@ -74,6 +78,14 @@ cuda-learn/
 
 ---
 
+### reduce (`kernels/reduce/`)
+
+从 `cuda_code/course4` 整理的一维 FP32 求和：寄存器累加、warp shuffle、
+少量共享内存和多轮归约。支持空数组及任意长度，附共享内存对照版、正确性检查和计时。
+详见 [Reduce 实现讲解与运行说明](kernels/reduce/README.md)。
+
+---
+
 ## 编译与运行
 
 ```bash
@@ -87,6 +99,8 @@ cmake .. && make
 ./double_buffering_matmul
 ./matrix_transpose
 ./histogram_shared
+./reduce --test
+./reduce 16777216 100
 ```
 
 ---
